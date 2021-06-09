@@ -1,4 +1,4 @@
-#include "fsemu-internal.h"
+#define FSEMU_INTERNAL
 #include "fsemu-controller.h"
 
 #include "fsemu-action.h"

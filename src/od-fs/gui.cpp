@@ -81,6 +81,13 @@ void gui_flicker_led (int led, int unitnum, int status) {
 void gui_led (int led, int state, int brightness)
 {
     //STUB("led %d state %d", led, state);
+
+    if (led == LED_POWER && brightness > 0) {
+        // Workaround because of state and brightness being too entangled
+        // in UAE core
+        state = 1;
+    }
+
     int out_led = -1;
     int out_state = state;
 
@@ -90,6 +97,7 @@ void gui_led (int led, int state, int brightness)
     else if (led == LED_DF3) out_led = 3;
     else if (led == LED_POWER) {
         //printf("POWER %d b %d\n", state, gui_data.powerled_brightness);
+        // printf("POWER LED %d b %d\n", state, brightness);
         out_led = 8;
     }
     else if (led == LED_HD) out_led = 9;
@@ -113,8 +121,17 @@ void gui_led (int led, int state, int brightness)
         }
     }
 
-    if (g_amiga_led_function && out_led > -1) {
-        g_amiga_led_function(out_led, out_state);
+    // if (g_amiga_led_function && out_led > -1) {
+    //     g_amiga_led_function(out_led, out_state);
+    // }
+
+    if (g_amiga_led_function) {
+        if (brightness == -1) {
+            brightness = 100;
+        } else {
+            brightness = 100 * brightness / 255;
+        }
+        g_amiga_led_function(led, out_state, brightness);
     }
 }
 

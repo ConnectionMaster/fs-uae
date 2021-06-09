@@ -1,4 +1,4 @@
-#include "fsemu-internal.h"
+#define FSEMU_INTERNAL
 #include "fsemu-data.h"
 
 #include "fsemu-glib.h"
@@ -6,7 +6,7 @@
 #include "fsemu-video.h"
 #include "fsemu-window.h"
 
-#ifdef FSEMU_WINDOWS
+#ifdef FSEMU_OS_WINDOWS
 #include <Windows.h>
 #endif
 
@@ -14,7 +14,9 @@
 #include <mach-o/dyld.h>
 #endif
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+int fsemu_data_log_level = FSEMU_LOG_LEVEL_DEBUG;
 
 /*
 static struct fsemu_titlebar {
@@ -22,15 +24,15 @@ static struct fsemu_titlebar {
 } fsemu_data;
 */
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 void fsemu_data_init(void)
 {
     fsemu_return_if_already_initialized();
 }
 
-#ifdef FSEMU_WINDOWS
-#elif defined(FSEMU_MACOS)
+#ifdef FSEMU_OS_WINDOWS
+#elif defined(FSEMU_OS_MACOS)
 #else
 
 static char *find_program_in_path(const char *prog)
@@ -90,7 +92,7 @@ static int fs_get_application_exe_path(char *buffer, int size)
     }
     buffer[0] = '\0';
 
-#if defined(FSEMU_WINDOWS)
+#if defined(FSEMU_OS_WINDOWS)
 
     wchar_t *temp_buf = (wchar_t *) g_malloc(sizeof(wchar_t) * FSEMU_PATH_MAX);
     /* len is the number of characters NOT including the terminating null
@@ -108,7 +110,7 @@ static int fs_get_application_exe_path(char *buffer, int size)
     buffer[result] = '\0';
     return 1;
 
-#elif defined(FSEMU_MACOS)
+#elif defined(FSEMU_OS_MACOS)
 
     unsigned int usize = size;
     int result = _NSGetExecutablePath(buffer, &usize);
@@ -165,6 +167,11 @@ static int fs_get_application_exe_path(char *buffer, int size)
 #endif
 }
 
+int fsemu_application_exe_path(char *buffer, int size)
+{
+    return fs_get_application_exe_path(buffer, size);
+}
+
 static int fs_get_application_exe_dir(char *buffer, int size)
 {
     // FIXME: Cache result?
@@ -183,6 +190,64 @@ static int fs_get_application_exe_dir(char *buffer, int size)
     return 0;
 }
 
+bool fsemu_data_development_mode(void)
+{
+    static bool initialized;
+    static bool development_mode;
+    if (fsemu_unlikely(!initialized)) {
+        initialized = true;
+        char executable_dir[FSEMU_PATH_MAX];
+        fs_get_application_exe_dir(executable_dir, FSEMU_PATH_MAX);
+        char *path = g_build_filename(
+            executable_dir, "fsemu", "src", "fsemu-all.c", NULL);
+        printf("%s\n", path);
+        if (fsemu_path_exists(path)) {
+            development_mode = true;
+        }
+        free(path);
+        fsemu_data_log("Development mode: %d\n", development_mode);
+    }
+    return development_mode;
+}
+
+size_t fsemu_application_exe_dir_strlcpy(char *path, size_t size)
+{
+    fs_get_application_exe_dir(path, size);
+    // Return value is not entirely compatible with strlcpy if there was not
+    // enough room.
+    // FIXME: Allocate exe dir path in init, and g_strlcpy here
+    return strlen(path);
+}
+
+size_t fsemu_data_dir_strlcpy(char *path, size_t size)
+{
+    fs_get_application_exe_dir(path, size);
+    if (fsemu_data_development_mode()) {
+        return g_strlcat(path, "/data", size);
+    } else {
+#ifdef FSEMU_OS_MACOS
+        return g_strlcat(path, "/../Resources/Data", size);
+#else
+        // Pass
+#endif
+    }
+
+    // Return value is not entirely compatible with strlcpy if there was not
+    // enough room.
+    // FIXME: Allocate exe dir path in init, and g_strlcpy here
+    return strlen(path);
+}
+
+static bool fsemu_data_path_exists_or_free(char *path)
+{
+    fsemu_data_log("Checking %s\n", path);
+    bool result = fsemu_path_exists(path);
+    if (!result) {
+        free(path);
+    }
+    return result;
+}
+
 char *fsemu_data_file_path(const char *relative)
 {
     static int initialized = 0;
@@ -192,8 +257,11 @@ char *fsemu_data_file_path(const char *relative)
         fsemu_data_log("Application exe dir: %s\n", executable_dir);
         initialized = 1;
     }
+    fsemu_data_log_debug("fsemu_data_file_path relative=%s\n", relative);
     char *path;
 
+    // FIXME: Can remove basename checks now that dirs have been stripped from
+    // from data paths.
     const char *basename = relative;
     const char *p = basename;
     while (*p) {
@@ -202,75 +270,64 @@ char *fsemu_data_file_path(const char *relative)
         }
         p++;
     }
-
     // Check the same directory as the executable first, basename only
     if (basename != relative) {
         path = g_build_filename(executable_dir, basename, NULL);
-        printf("Checking %s\n", path);
-        if (fsemu_path_exists(path)) {
+        if (fsemu_data_path_exists_or_free(path)) {
             return path;
         }
-        g_free(path);
     }
 
     // Check the same directory as the executable first
     path = g_build_filename(executable_dir, relative, NULL);
-    printf("Checking %s\n", path);
-    if (fsemu_path_exists(path)) {
+    if (fsemu_data_path_exists_or_free(path)) {
         return path;
     }
-    g_free(path);
 
-#ifdef FSEMU_MACOS
+#ifdef FSEMU_OS_MACOS
     char buffer[FSEMU_PATH_MAX];
     fs_get_application_exe_dir(buffer, FSEMU_PATH_MAX);
-    path = g_build_filename(buffer, "..", "Resources", relative, NULL);
+    path = g_build_filename(buffer, "..", "Resources", "Data", relative, NULL);
 #else
     // FIXME: Replace fs-uae with application name build c
     path = g_build_filename(
         executable_dir, "..", "share", "fs-uae", relative, NULL);
 #endif
-    if (fsemu_path_exists(path)) {
+    if (fsemu_data_path_exists_or_free(path)) {
         return path;
     }
-    g_free(path);
 
-    // FIXME: check development mode
-    bool development_mode = true;
-    if (development_mode) {
+    if (fsemu_data_development_mode()) {
         // Check in the data dir (during development and testing)
         path = g_build_filename(executable_dir, "data", relative, NULL);
-        if (fsemu_path_exists(path)) {
+        if (fsemu_data_path_exists_or_free(path)) {
             return path;
         }
         // Check in the fsemu/data dir (during development and testing)
         path =
             g_build_filename(executable_dir, "fsemu", "data", relative, NULL);
-        if (fsemu_path_exists(path)) {
+        if (fsemu_data_path_exists_or_free(path)) {
             return path;
         }
-        g_free(path);
         // Check in the ../fsemu/data dir (during development and testing)
         path = g_build_filename(
             executable_dir, "..", "fsemu", "data", relative, NULL);
-        if (fsemu_path_exists(path)) {
+        if (fsemu_data_path_exists_or_free(path)) {
             return path;
         }
-        g_free(path);
         // DEPRECATED: Check in the data.fs dir (during development and
         // testing)
         path = g_build_filename(executable_dir, "data.fs", relative, NULL);
-        if (fsemu_path_exists(path)) {
+        if (fsemu_data_path_exists_or_free(path)) {
             return path;
         }
-        g_free(path);
     }
 
     // Check in the plugin data dir
     // FIXME: check plugin mode
     bool plugin_mode = true;
     if (plugin_mode) {
-#ifdef FSEMU_MACOS
+#ifdef FSEMU_OS_MACOS
         // Need to go further up in the hierarchy due to being bundled inside
         // an application bundle.
         path = g_build_filename(executable_dir,
@@ -286,22 +343,21 @@ char *fsemu_data_file_path(const char *relative)
         path = g_build_filename(
             executable_dir, "..", "..", "Data", relative, NULL);
 #endif
-        if (fsemu_path_exists(path)) {
+        if (fsemu_data_path_exists_or_free(path)) {
             return path;
         }
-        g_free(path);
 
 #if 0
         path = g_build_filename(executable_dir, "share", relative, NULL);
-        if (fsemu_path_exists(path)) {
+        fsemu_data_log("Checking %s\n", path);
+        if (fsemu_data_path_exists_or_free(path)) {
             return path;
         }
-        g_free(path);
         path = g_build_filename(executable_dir, "..", "share", relative, NULL);
-        if (fsemu_path_exists(path)) {
+        fsemu_data_log("Checking %s\n", path);
+        if (fsemu_data_path_exists_or_free(path)) {
             return path;
         }
-        g_free(path);
 #endif
     }
 
@@ -309,18 +365,16 @@ char *fsemu_data_file_path(const char *relative)
 #ifdef FSEMU_GLIB
     const char *user_dir = g_get_user_data_dir();
     path = g_build_filename(user_dir, relative, NULL);
-    if (fsemu_path_exists(path)) {
+    if (fsemu_data_path_exists_or_free(path)) {
         return path;
     }
-    g_free(path);
 
     const char *const *dirs = g_get_system_data_dirs();
     while (*dirs) {
         path = g_build_filename(*dirs, relative, NULL);
-        if (fsemu_path_exists(path)) {
+        if (fsemu_data_path_exists_or_free(path)) {
             return path;
         }
-        g_free(path);
         dirs++;
     }
 #endif
@@ -336,7 +390,7 @@ void fsemu_data_load(const char *name, void **data, int *data_size)
     *data_size = 0;
     char *path = fsemu_data_file_path(name);
     if (!path) {
-        fsemu_data_log("No path!\n");
+        fsemu_data_log_warning("Could not find data file '%s'\n", name);
         return;
     }
     fsemu_data_log("Path: %s\n", path);

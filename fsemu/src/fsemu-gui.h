@@ -43,7 +43,7 @@ fsemu_gui_item_t *fsemu_gui_create_item(void);
 void fsemu_gui_item_set_visible(fsemu_gui_item_t *item, bool visible);
 
 void fsemu_gui_rectangle(
-    fsemu_gui_item_t *item, int x, int y, int w, int h, int c);
+    fsemu_gui_item_t *item, int x, int y, int w, int h, uint32_t c);
 void fsemu_gui_image(
     fsemu_gui_item_t *item, int x, int y, int w, int h, fsemu_image_t *image);
 
@@ -58,7 +58,7 @@ void fsemu_gui_free_snapshot(fsemu_gui_item_t *snapshot);
 #ifdef FSEMU_INTERNAL
 
 #define fsemu_gui_log(format, ...) \
-    fsemu_log("[FSEMU] [ GUI ] " format, ##__VA_ARGS__)
+    fsemu_log("[FSE] [GUI] " format, ##__VA_ARGS__)
 
 // void fsemu_gui_item_hide(fsemu_gui_item_t* item);
 
@@ -103,6 +103,8 @@ struct fsemu_gui_item_struct {
 
     char *text;
     fsemu_image_t *textimage;
+    // Default is 0.0 for left-aligned.
+    float text_halign;
     // Default is 0.5 for centered vertically.
     float text_valign;
     // For example FSEMU_WIDGET_TEXT_TRANSFORM_UPPERCASE.

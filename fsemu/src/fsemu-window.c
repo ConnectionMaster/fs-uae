@@ -1,23 +1,24 @@
-#include "fsemu-internal.h"
+#define FSEMU_INTERNAL
 #include "fsemu-window.h"
 
 #include "fsemu-layout.h"
 #include "fsemu-mouse.h"
 #include "fsemu-option.h"
 #include "fsemu-sdlwindow.h"
+#include "fsemu-thread.h"
 #include "fsemu-titlebar.h"
 #include "fsemu-types.h"
 #include "fsemu-util.h"
 #include "fsemu-video.h"
 #include "fsemu-videothread.h"
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int fsemu_window_log_level = FSEMU_LOG_INFO;
+int fsemu_window_log_level = FSEMU_LOG_LEVEL_INFO;
 
 #define FSEMU_WINDOW_TITLE_MAX 128
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 static struct fsemu_window {
     fsemu_window_driver_t driver;
@@ -58,6 +59,9 @@ static void fsemu_window_read_options(void)
     fsemu_option_read_int(FSEMU_OPTION_WINDOW_CENTER_Y, &point->y);
     fsemu_window_log("Initial window center: %d %d\n", point->x, point->y);
 
+    // FIXME: Support reading the monitor option and calculating these
+    // coordinates if not explicitly specified.
+
     rect = &fsemu_window.initial_fullscreen_rect;
     fsemu_option_read_int(FSEMU_OPTION_FULLSCREEN_X, &rect->x);
     fsemu_option_read_int(FSEMU_OPTION_FULLSCREEN_Y, &rect->y);
@@ -70,7 +74,7 @@ static void fsemu_window_read_options(void)
                      rect->h);
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 void fsemu_window_initial_rect(fsemu_rect_t *rect, double ui_scale)
 {
@@ -87,20 +91,21 @@ void fsemu_window_initial_rect(fsemu_rect_t *rect, double ui_scale)
     // initial_w = 880;
     // initial_h = 660;
 
-    initial_w = 864;
-    initial_h = 648;
+    // initial_w = 864;
+    // initial_h = 648;
+
+    initial_w = 1280;
+    initial_h = 720;
 
     *rect = fsemu_window.initial_rect;
+    fsemu_window_log(
+        "Initial window rect: %d %d %d %d (UI scale %0.1f)\n",
+        rect->x, rect->y, rect->w, rect->h, ui_scale);
     if (rect->w == 0 || rect->h == 0) {
         rect->x = -1;
         rect->y = -1;
         rect->w = initial_w * ui_scale;
         rect->h = initial_h * ui_scale;
-    }
-    if (!fsemu_titlebar_use_system()) {
-        fsemu_window_log(
-            "No system titlebar: Increasing initial height\n");
-        rect->h += fsemu_titlebar_unscaled_height() * ui_scale;
     }
     if (fsemu_window.initial_center.x) {
         rect->x = fsemu_window.initial_center.x - rect->w / 2;
@@ -108,6 +113,17 @@ void fsemu_window_initial_rect(fsemu_rect_t *rect, double ui_scale)
     if (fsemu_window.initial_center.y) {
         rect->y = fsemu_window.initial_center.y - rect->h / 2;
     }
+    if (!fsemu_titlebar_use_system()) {
+        fsemu_window_log("No system titlebar: Increasing initial height\n");
+        int titlebar_height = fsemu_titlebar_unscaled_height() * ui_scale;
+        rect->h += titlebar_height;
+        if (rect->y != -1) {
+            rect->y -= titlebar_height;
+        }
+    }
+    fsemu_window_log(
+        "Initial window rect after correcting for centering: %d %d %d %d\n",
+        rect->x, rect->y, rect->w, rect->h);
 }
 
 void fsemu_window_initial_fullscreen_rect(fsemu_rect_t *rect)
@@ -124,7 +140,7 @@ void fsemu_window_initial_fullscreen_rect(fsemu_rect_t *rect)
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 double fsemu_window_ui_scale(void)
 {
@@ -163,7 +179,7 @@ void fsemu_window_set_size_2(int width, int height)
     fsemu_window.size.h = height;
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 const char *fsemu_window_title(void)
 {
@@ -204,7 +220,7 @@ static void fsemu_window_sync_data_to_video_thread(void)
     fsemu_videothread_unlock();
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 void fsemu_window_work(int timeout)
 {
@@ -212,6 +228,9 @@ void fsemu_window_work(int timeout)
         fsemu_sdlwindow_work(timeout);
         // Perform periodic updates, check if fullscreen should be toggled,
         // etc.
+
+        // FIXME: Move to main_update via window_update? Should be sufficient
+        // to update once every frame.
         fsemu_sdlwindow_update();
     }
 
@@ -221,7 +240,21 @@ void fsemu_window_work(int timeout)
     fsemu_window_sync_data_to_video_thread();
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+void fsemu_window_notify_frame_rendered_vt(void)
+{
+    fsemu_thread_assert_video();
+    fsemu_sdlwindow_notify_frame_rendered_vt();
+}
+
+void fsemu_window_notify_quit(void)
+{
+    // fsemu_thread_assert_main();
+    fsemu_sdlwindow_notify_quit();
+}
+
+// ----------------------------------------------------------------------------
 
 bool fsemu_window_fullscreen(void)
 {
@@ -238,7 +271,7 @@ void fsemu_window_toggle_fullscreen(void)
     fsemu_window_set_fullscreen(!fsemu_window_fullscreen());
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /*
 void fsemu_assert_window(void)
@@ -280,7 +313,7 @@ void fsemu_set_window_fullscreen(bool fullscreen)
         int wbt, wbl;
         if (SDL_GetWindowBordersSize(
                 fsemu_sdl_window, &wbt, &wbl, NULL, NULL) == 0) {
-            printf("[FSEMU] Hack:Subtracting borders -%d-%d\n", wbt, wbl);
+            printf("[FSE] Hack:Subtracting borders -%d-%d\n", wbt, wbl);
             fsemu_window_rect.x -= wbl;
             fsemu_window_rect.y -= wbt;
         }
@@ -290,7 +323,7 @@ void fsemu_set_window_fullscreen(bool fullscreen)
 #endif
         SDL_GetWindowSize(
             fsemu_sdl_window, &fsemu_window_rect.w, &fsemu_window_rect.h);
-        printf("[FSEMU] Window dimensions were %dx%d +%d+%d\n",
+        printf("[FSE] Window dimensions were %dx%d +%d+%d\n",
                fsemu_window_rect.w,
                fsemu_window_rect.h,
                fsemu_window_rect.x,
@@ -298,7 +331,7 @@ void fsemu_set_window_fullscreen(bool fullscreen)
         SDL_SetWindowFullscreen(fsemu_sdl_window,
                                 SDL_WINDOW_FULLSCREEN_DESKTOP);
     } else {
-        printf("[FSEMU] Setting window dimensions to %dx%d +%d+%d\n",
+        printf("[FSE] Setting window dimensions to %dx%d +%d+%d\n",
                fsemu_window_rect.w,
                fsemu_window_rect.h,
                fsemu_window_rect.x,
@@ -315,7 +348,7 @@ void fsemu_set_window_fullscreen(bool fullscreen)
 /*
 void fsemu_set_sdl_window(SDL_Window *window)
 {
-    printf("[FSEMU] Register SDL window\n");
+    printf("[FSE] Register SDL window\n");
     fsemu_sdl_window = window;
 }
 */
@@ -362,7 +395,7 @@ static void read_initial_window_rect(fsemu_rect *rect)
 }
 */
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 void fsemu_window_init(void)
 {

@@ -8680,6 +8680,8 @@ static void vsync_handler_post (void)
 		// fsemu_frame_update_timing(vblank_hz, currprefs.turbo_emulation);
 		// printf("vblank_hz = %0.2f\n", vblank_hz);
 		fsemu_frame_start(vblank_hz);
+                 double adjust = fsemu_audiobuffer_calculate_adjustment();
+                 amiga_set_audio_frequency_adjust(adjust);
 
 #if 0
 		// Now we sleep until the start of the next frame. Using the less
@@ -9481,7 +9483,7 @@ static void linesync_fsemu(void)
 		if (until - now > 1000) {
 			// We are now 1 ms "behind" and will either run extra CPU cycles
 			// or sleep (to throttle a bit and use less resources).
-			if (sleep_mod && extra_counter++ % sleep_mod == 0) {
+			if (sleep_mod > 0 && extra_counter++ % sleep_mod == 0) {
 				// We sleep before doing extra cycles, to ensure that we get
 				// some sleep since we do want to throttle when sleep_mod > 0.
 				now = linesleep_fsemu(now, until);
@@ -10574,7 +10576,7 @@ void init_eventtab (void)
 {
 #ifdef FSUAE
 	if (fsemu) {
-		printf("init_eventtab get_cycles() = %ld hsync at %ld\n", get_cycles(), get_cycles () + HSYNCTIME);
+		// printf("init_eventtab get_cycles() = %ld hsync at %ld\n", get_cycles(), get_cycles () + HSYNCTIME);
 	}
 #endif
 	int i;

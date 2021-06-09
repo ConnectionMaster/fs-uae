@@ -36,6 +36,7 @@
 #include "fsuae-input.h"
 #include "fsuae-media.h"
 #include "fsuae-options.h"
+#include "fsuae-oskeyboard.h"
 #include "fsuae-path.h"
 #include "fsuae-plugins.h"
 #include "fsuae-recording.h"
@@ -53,8 +54,11 @@
 #include "fsemu-audio.h"
 #include "fsemu-gamemode.h"
 #include "fsemu-gui.h"
+#include "fsemu-helpbar.h"
 #include "fsemu-input.h"
 #include "fsemu-inputport.h"
+#include "fsemu-leds.h"
+#include "fsemu-main.h"
 #include "fsemu-option.h"
 #include "fsemu-quit.h"
 #include "fsemu-time.h"
@@ -66,7 +70,7 @@
 #include "../../fsemu/gamemode/lib/gamemode_client.h"
 #endif
 
-int fsuae_log_level = FSEMU_LOG_INFO;
+int fsuae_log_level = FSEMU_LOG_LEVEL_INFO;
 
 int fsemu = 0;
 
@@ -259,7 +263,7 @@ void fs_uae_process_input_event(int line, int action, int state, int playback)
         if (load_state_number >= 1 && load_state_number <= 9) {
             // FIXME: improvement, check if state file exists and show
             // GUI warning if not...
-            fs_log("trying to load state number: %d\n", load_state_number);
+            fsuae_log("trying to load state number: %d\n", load_state_number);
             amiga_send_input_event(
                 INPUTEVENT_SPC_STATERESTORE1 - 1 + load_state_number, 1);
         }
@@ -298,7 +302,6 @@ void fs_uae_process_input_event(int line, int action, int state, int playback)
 
     if (action == 0) {
     }
-
 #if 1
     // FIXME: Handle these in the beginning of the frame only? More like
     // how state loading/saving is handled?
@@ -386,13 +389,13 @@ void fs_uae_process_input_event(int line, int action, int state, int playback)
 
     if (load_state) {
 #ifdef WITH_LUA
-        fs_log("run handler on_fs_uae_load_state\n");
+        fsuae_log("run handler on_fs_uae_load_state\n");
         fs_emu_lua_run_handler("on_fs_uae_load_state");
 #endif
         record_event = 0;
     } else if (save_state) {
 #ifdef WITH_LUA
-        fs_log("run handler on_fs_uae_save_state\n");
+        fsuae_log("run handler on_fs_uae_save_state\n");
         fs_emu_lua_run_handler("on_fs_uae_save_state");
 #endif
         record_event = 0;
@@ -407,12 +410,12 @@ void fs_uae_process_input_event(int line, int action, int state, int playback)
 #if FSUAE_LEGACY
     if (load_state) {
 #ifdef WITH_LUA
-        fs_log("run handler on_fs_uae_load_state_done\n");
+        fsuae_log("run handler on_fs_uae_load_state_done\n");
         fs_emu_lua_run_handler("on_fs_uae_load_state_done");
 #endif
     } else if (save_state) {
 #ifdef WITH_LUA
-        fs_log("run handler on_fs_uae_save_state_done\n");
+        fsuae_log("run handler on_fs_uae_save_state_done\n");
         fs_emu_lua_run_handler("on_fs_uae_save_state_done");
 #endif
     }
@@ -607,11 +610,13 @@ static void event_handler(int line)
     fsemu_assert(line == -1);
 
     // printf("line %d\n", line);
+#ifdef FSEMU
+    // FIXME: Move away from event handler!
     // FIXME: Move somewhere else??
     // Move to custom.cpp after/when starting new frame?
-#ifdef FSEMU
-    double adjust = fsemu_audio_buffer_calculate_adjustment();
-    amiga_set_audio_frequency_adjust(adjust);
+    // EDIT: YES
+    // double adjust = fsemu_audiobuffer_calculate_adjustment();
+    //amiga_set_audio_frequency_adjust(adjust);
     // printf("[INPUT] g_fs_uae_frame = %d\n", g_fs_uae_frame);
 #else
     fs_emu_wait_for_frame(g_fs_uae_frame);
@@ -638,7 +643,7 @@ static void event_handler(int line)
         }
         static int quit_called = 0;
         if (quit_called == 0) {
-            fs_log("calling amiga_quit\n");
+            fsuae_log("calling amiga_quit\n");
             amiga_quit();
             quit_called = 1;
         }
@@ -694,10 +699,10 @@ static int audio_callback_function(int type, int16_t *buffer, int size)
 // FIXME: Candidate for moving out of this file
 void fs_uae_load_rom_files(const char *path)
 {
-    fs_log("fs_uae_load_rom_files %s\n", path);
+    fsuae_log("fs_uae_load_rom_files %s\n", path);
     GDir *dir = g_dir_open(path, 0, NULL);
     if (dir == NULL) {
-        fs_log("error opening dir\n");
+        fsuae_log("error opening dir\n");
         return;
     }
 
@@ -712,7 +717,8 @@ void fs_uae_load_rom_files(const char *path)
         if (key_size > 0 && key_size < 1024 * 1024) {
             guchar *key_data = malloc(key_size);
             if (fread(key_data, key_size, 1, f) == 1) {
-                fs_log("read rom key file, size = %d\n", key_size);
+                fsuae_log("read rom key file, size = %lld\n",
+                          (long long) key_size);
                 g_checksum_update(rom_checksum, key_data, key_size);
             }
             free(key_data);
@@ -727,7 +733,7 @@ void fs_uae_load_rom_files(const char *path)
         char *lname = g_utf8_strdown(name, -1);
         if (g_str_has_suffix(lname, ".rom") ||
             g_str_has_suffix(lname, ".bin")) {
-            fs_log("found file \"%s\"\n", name);
+            fsuae_log("found file \"%s\"\n", name);
             char *full_path = g_build_filename(path, name, NULL);
             // GChecksum *checksum = g_checksum_new(G_CHECKSUM_MD5);
             GChecksum *checksum = g_checksum_copy(rom_checksum);
@@ -778,11 +784,11 @@ static void on_gui_message(const char *message)
 
 static void on_init(void)
 {
-    fs_log("\n");
-    fs_log(LOG_LINE);
-    fs_log("uae configuration\n");
-    fs_log(LOG_LINE);
-    fs_log("\n");
+    fsuae_log("\n");
+    fsuae_log(LOG_LINE);
+    fsuae_log("uae configuration\n");
+    fsuae_log(LOG_LINE);
+    fsuae_log("\n");
 
     amiga_set_gui_message_function(on_gui_message);
 
@@ -817,14 +823,14 @@ static void on_init(void)
 
     /*
     if (fs_emu_get_video_sync()) {
-        fs_log("fs_emu_get_video_sync returned true\n");
+        fsuae_log("fs_emu_get_video_sync returned true\n");
         amiga_set_option("gfx_vsync", "true");
     }
     else {
-        fs_log("fs_emu_get_video_sync returned false\n");
+        fsuae_log("fs_emu_get_video_sync returned false\n");
     }
     if (fs_emu_netplay_enabled()) {
-        fs_log("netplay is enabled\n");
+        fsuae_log("netplay is enabled\n");
         // make sure UAE does not sleep between frames, we must be able
         // to control sleep times for net play
         amiga_set_option("gfx_vsync", "true");
@@ -884,17 +890,17 @@ static void on_init(void)
     amiga_write_uae_config(uae_file);
     g_free(uae_file);
 
-    fs_log("\n");
-    fs_log(LOG_LINE);
-    fs_log("end of uae configuration\n");
-    fs_log(LOG_LINE);
-    fs_log("\n");
+    fsuae_log("\n");
+    fsuae_log(LOG_LINE);
+    fsuae_log("end of uae configuration\n");
+    fsuae_log(LOG_LINE);
+    fsuae_log("\n");
 }
 
 #ifdef FSUAE_LEGACY
 static void pause_function(int pause)
 {
-    fs_log("pause_function %d\n", pause);
+    fsuae_log("pause_function %d\n", pause);
     // uae_pause(pause);
     amiga_pause(pause);
 }
@@ -905,15 +911,15 @@ static void pause_function(int pause)
 
 static int load_config_file(void)
 {
-    fs_log("load config file\n");
-    const char *msg = "checking config file %s\n";
+    fsuae_log("load config file\n");
+#define msg "checking config file %s\n"
 
     char *data;
     int size;
     if (fs_data_file_content("META-INF/Config.fs-uae", &data, &size) == 0) {
         fs_ini_file *ini_file = fs_ini_file_open_data(data, size);
         if (ini_file == NULL) {
-            fs_log("error loading config file\n");
+            fsuae_log("error loading config file\n");
             return 1;
         }
         fs_config_parse_ini_file(ini_file, 0);
@@ -925,7 +931,7 @@ static int load_config_file(void)
     if (g_fs_uae_config_file_path == NULL) {
         char *path =
             g_build_filename(fsuae_path_exe_dir(), "Config.fs-uae", NULL);
-        fs_log(msg, path);
+        fsuae_log(msg, path);
         if (fs_path_exists(path)) {
             g_fs_uae_config_file_path = path;
         } else {
@@ -936,7 +942,7 @@ static int load_config_file(void)
     if (g_fs_uae_config_file_path == NULL) {
         char *path = g_build_filename(
             fsuae_path_exe_dir(), "..", "..", "Config.fs-uae", NULL);
-        fs_log(msg, path);
+        fsuae_log(msg, path);
         if (fs_path_exists(path)) {
             g_fs_uae_config_file_path = path;
         } else {
@@ -945,13 +951,13 @@ static int load_config_file(void)
     }
 #endif
     if (g_fs_uae_config_file_path == NULL) {
-        fs_log(msg, "Config.fs-uae");
+        fsuae_log(msg, "Config.fs-uae");
         if (fs_path_exists("Config.fs-uae")) {
             g_fs_uae_config_file_path = "Config.fs-uae";
         }
     }
     if (g_fs_uae_config_file_path == NULL) {
-        fs_log(msg, "fs-uae.conf");
+        fsuae_log(msg, "fs-uae.conf");
         if (fs_path_exists("fs-uae.conf")) {
             g_fs_uae_config_file_path = "fs-uae.conf";
         }
@@ -959,7 +965,7 @@ static int load_config_file(void)
     if (g_fs_uae_config_file_path == NULL) {
         char *path = g_build_filename(
             fse_user_config_dir(), "fs-uae", "fs-uae.conf", NULL);
-        fs_log(msg, path);
+        fsuae_log(msg, path);
         if (fs_path_exists(path)) {
             g_fs_uae_config_file_path = path;
         } else {
@@ -969,7 +975,7 @@ static int load_config_file(void)
     if (g_fs_uae_config_file_path == NULL) {
         char *path =
             g_build_filename(fsuae_path_configs_dir(), "Default.fs-uae", NULL);
-        fs_log(msg, path);
+        fsuae_log(msg, path);
         if (fs_path_exists(path)) {
             g_fs_uae_config_file_path = path;
         } else {
@@ -977,7 +983,7 @@ static int load_config_file(void)
         }
     }
     if (g_fs_uae_config_file_path) {
-        fs_log("loading config from %s\n", g_fs_uae_config_file_path);
+        fsuae_log("loading config from %s\n", g_fs_uae_config_file_path);
         fs_config_read_file(g_fs_uae_config_file_path, 0);
         g_fs_uae_config_dir_path =
             g_path_get_dirname(g_fs_uae_config_file_path);
@@ -988,7 +994,7 @@ static int load_config_file(void)
             // do not warn in case end_config was specified via argv
         }
         else {
-            fs_log("No configuration file was found");
+            fsuae_log("No configuration file was found");
             g_warn_about_missing_config_file = 1;
         }
     }
@@ -996,7 +1002,7 @@ static int load_config_file(void)
 
     char *path =
         g_build_filename(fsuae_path_configs_dir(), "Host.fs-uae", NULL);
-    fs_log(msg, path);
+    fsuae_log(msg, path);
     if (fs_path_exists(path)) {
         fs_config_read_file(path, 0);
     }
@@ -1015,7 +1021,7 @@ static void log_to_libfsemu(const char *message)
     }
     if (!ignore) {
         if (fsemu) {
-            fsemu_log_string(message);
+            fsemu_log_with_level(FSEMU_LOG_LEVEL_INFO, message);
         } else {
             fs_log_string(message);
         }
@@ -1031,7 +1037,7 @@ static void main_function()
     }
 
     amiga_main();
-    fs_log("[CORE] Return from amiga_main\n");
+    fsuae_log("Return from amiga_main\n");
     fs_uae_write_recorded_session();
     if (fsemu) {
         fsemu_quit_maybe();
@@ -1050,20 +1056,20 @@ static void init_i18n(void)
 {
     // FIXME: language = 0 instead?
     if (fs_config_get_boolean("localization") == 0) {
-        fs_log("[I18N ] Localization was forcefully disabled\n");
+        fsuae_log("[I18N ] Localization was forcefully disabled\n");
         return;
     }
 
     char *locale = setlocale(LC_MESSAGES, "");
     if (locale) {
-        fs_log("[I18N] Locale is set to %s\n", locale);
+        fsuae_log("[I18N] Locale is set to %s\n", locale);
     } else {
-        fs_log("[I18N] Failed to set current locale\n");
+        fsuae_log("[I18N] Failed to set current locale\n");
     }
 
     const char *language = fs_config_get_const_string("language");
     if (language) {
-        fs_log("[I18N] Set environment LANGUAGE=%s\n", language);
+        fsuae_log("[I18N] Set environment LANGUAGE=%s\n", language);
         char *env_str = g_strdup_printf("LANGUAGE=%s", language);
 #ifdef WINDOWS
         _putenv(env_str);
@@ -1081,19 +1087,19 @@ static void init_i18n(void)
     char *locale_base =
         g_build_filename(executable_dir, "..", "..", "Data", "Locale", NULL);
     if (g_file_test(locale_base, G_FILE_TEST_IS_DIR)) {
-        fs_log("[I18N] Using locale dir \"%s\"\n", locale_base);
+        fsuae_log("[I18N] Using locale dir \"%s\"\n", locale_base);
         bindtextdomain("fs-uae", locale_base);
     } else {
         char *path = fs_get_data_file("fs-uae/share-dir");
         if (path) {
-            fs_log("[I18N] Using data dir \"%s\"\n", path);
+            fsuae_log("[I18N] Using data dir \"%s\"\n", path);
             /* Remove trailing "fs-uae/share-dir" from the returned path. */
             int len = strlen(path);
             if (len > 16) {
                 path[len - 16] = '\0';
             }
             char *locale_base_2 = g_build_filename(path, "locale", NULL);
-            fs_log("[I18N] Using locale dir \"%s\"\n", locale_base_2);
+            fsuae_log("[I18N] Using locale dir \"%s\"\n", locale_base_2);
             bindtextdomain("fs-uae", locale_base_2);
             free(locale_base_2);
             free(path);
@@ -1106,7 +1112,17 @@ static void init_i18n(void)
 
 // ----------------------------------------------------------------------------
 
-static void led_function(int led, int state)
+#define LED_STATES_MAX 12
+
+static struct {
+    fsemu_led_t *power_led;
+    fsemu_led_t *floppy_led;
+    fsemu_led_t *disk_led;
+    int led_states[LED_STATES_MAX];
+    int led_brightness[LED_STATES_MAX];
+} leds;
+
+static void led_function(int led, int state, int brightness)
 {
 #ifdef FSUAE_LEGACY
     /* floppy led status is custom overlay 0..3 */
@@ -1117,6 +1133,10 @@ static void led_function(int led, int state)
 #endif
     fs_emu_set_custom_overlay_state(led, state);
 #endif
+    if (led < LED_STATES_MAX) {
+        leds.led_states[led] = state;
+        leds.led_brightness[led] = brightness;
+    }
 }
 
 static void on_update_leds(void *data)
@@ -1130,7 +1150,48 @@ static void on_update_leds(void *data)
         fs_emu_set_custom_overlay_state(led + 1, leds->df_t0[i]);
     }
 #endif
+    int floppy_state = 0;
+    for (int i = 1; i <= 4; i++) {
+    // for (int i = 0; i <= 3; i++) {
+        if (leds.led_states[i]) {
+            floppy_state = 1;
+        }
+    }
+    // FIXME: Power led should be dimmed and not completely off when audio
+    // filter is enabled (strictly speaking depending on model).
+    // FIXME: Support older model style of red power and green floppy led?
+    // For example when emulating Amiga 1000?
+
+    // FIXME: Use led numbers from UAE, not OD-FS ones
+    fsemu_led_set_state(leds.power_led, leds.led_states[0]);
+    fsemu_led_set_brightness(leds.power_led, leds.led_brightness[0]);
+    // fsemu_led_set_state(leds.power_led, leds.led_states[8]);
+    fsemu_led_set_state(leds.floppy_led, floppy_state);
+    fsemu_led_set_state(leds.disk_led, leds.led_states[5]);
+    // fsemu_led_set_state(leds.disk_led, leds.led_states[9]);
 }
+
+// ----------------------------------------------------------------------------
+
+static void fsuae_init_leds(void)
+{
+    leds.power_led = fsemu_led_create();
+    fsemu_led_set_id(leds.power_led, "PowerLed");
+    fsemu_led_set_label(leds.power_led, "POWER");
+    fsemu_leds_add_led(leds.power_led);
+
+    leds.floppy_led = fsemu_led_create();
+    fsemu_led_set_id(leds.floppy_led, "FloppyLed");
+    fsemu_led_set_label(leds.floppy_led, "FLOPPY");
+    fsemu_leds_add_led(leds.floppy_led);
+
+    leds.disk_led = fsemu_led_create();
+    fsemu_led_set_id(leds.disk_led, "DiskLed");
+    fsemu_led_set_label(leds.disk_led, "H.DISK");
+    fsemu_leds_add_led(leds.disk_led);
+}
+
+// ----------------------------------------------------------------------------
 
 static unsigned int whdload_quit_key = 0;
 
@@ -1141,20 +1202,20 @@ static int64_t whdload_quit_time = 0;
 
 static void fs_emu_send_whdload_quit_key(int whdload_quit_key)
 {
-    fs_log("Find input event for amiga key %d\n", whdload_quit_key);
+    fsuae_log("Find input event for amiga key %d\n", whdload_quit_key);
     int input_event = amiga_find_input_event_for_key(whdload_quit_key);
-    fs_log("Found input event %d for amiga key %d\n",
-           input_event,
-           whdload_quit_key);
+    fsuae_log("Found input event %d for amiga key %d\n",
+              input_event,
+              whdload_quit_key);
     if (input_event) {
-        fs_log("Sending WHDLoad quit key input");
+        fsuae_log("Sending WHDLoad quit key input");
         fs_emu_queue_action(input_event, 1);
     }
 }
 
 static int quit_function()
 {
-    fs_log("quit_function\n");
+    fsuae_log("quit_function\n");
     if (whdload_quit_key) {
         if (whdload_quit_time > 0) {
             int64_t diff = fs_ml_monotonic_time() - whdload_quit_time;
@@ -1167,7 +1228,7 @@ static int quit_function()
                 return 1;
             }
         }
-        fs_log("NOT QUITING\n");
+        fsuae_log("NOT QUITING\n");
         if (whdload_quit_time == 0) {
             // Only show this message once
             fs_emu_warning("Sent WHDLoad quit key ($%02X) to exit gracefully",
@@ -1256,10 +1317,10 @@ static void configure_logging(const char *logstr)
     //}
 
     if (!logstr) {
-        fs_log("configure logging: none\n");
+        fsuae_log("configure logging: none\n");
         return;
     }
-    fs_log("configure logging: %s\n", logstr);
+    fsuae_log("configure logging: %s\n", logstr);
     int all = strstr(logstr, "all") != 0;
     int uae_all = all || strstr(logstr, "uae") != 0;
     if (uae_all || strstr(logstr, "uae_disk")) {
@@ -1287,10 +1348,10 @@ static void cleanup_old_file(const char *path)
     char *p = fsuae_path_expand(path);
     if (fs_path_exists(p)) {
         if (fs_path_is_dir(p)) {
-            fs_log("trying to remove old directory %s\n", p);
+            fsuae_log("trying to remove old directory %s\n", p);
             g_rmdir(p);
         } else {
-            fs_log("trying to remove old file %s\n", p);
+            fsuae_log("trying to remove old file %s\n", p);
             g_unlink(p);
         }
     }
@@ -1335,7 +1396,7 @@ static void check_linux_cpu_governor()
         return;
     }
     g_strstrip(governor);
-    fs_log("CPU scaling governor: '%s'\n", governor);
+    fsuae_log("CPU scaling governor: '%s'\n", governor);
     if (fs_config_get_boolean(OPTION_GOVERNOR_WARNING) == 0) {
         return;
     }
@@ -1384,18 +1445,17 @@ static const char *overlay_names[] = {
 
 // clang-format off
 #define COPYRIGHT_NOTICE                                                      \
-"FS-UAE %s (Built for %s %s)\n"                                               \
-"Copyright 1995-2002 Bernd Schmidt, 1999-2017 Toni Wilen,\n"                  \
-"2003-2007 Richard Drummond, 2006-2011 Mustafa 'GnoStiC' Tufan,\n"            \
-"2011-2017 Frode Solheim, and contributors.\n"                                \
+"FS-UAE %s %s %s\n"                                                           \
 "\n"                                                                          \
-"This is free software; see the file COPYING for copying conditions. "        \
-"There\n"                                                                     \
-"is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A "              \
-"PARTICULAR\n"                                                                \
-"PURPOSE. See the README for more copyright info, and the source code "       \
-"for\n"                                                                       \
-"a full list of contributors\n\n"
+"Copyright 2011-2021 Frode Solheim and others.\n"                             \
+"Based on %s, Copyright 1999-2021 Toni Wilen and others.\n"                   \
+"Based on UAE, Copyright 1995-2002 Bernd Schmidt and others.\n"               \
+"\n"                                                                          \
+"This is free software; see the file COPYING for copying conditions. There "  \
+"is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR "  \
+"PURPOSE. See\nthe file README and the source code for more info and list "   \
+"of contributors.\n"                                                          \
+"\n"
 
 #define EXTRA_HELP_TEXT                                                       \
 ""                                                                            \
@@ -1451,9 +1511,11 @@ static void *emulation_thread(void *data)
     return NULL;
 }
 
+static fs_thread *g_emulation_thread;
+
 int fs_emu_run(fs_emu_main_function function)
 {
-    fs_thread *g_emulation_thread =
+    g_emulation_thread =
         fs_thread_create("emulation", emulation_thread, function);
     if (g_emulation_thread == NULL) {
         fsemu_log("Error starting emulation thread\n");
@@ -1466,6 +1528,147 @@ int fs_emu_run(fs_emu_main_function function)
 
 #endif
 
+static void handle_events_from_uae(void)
+{
+    int event;
+    void *data;
+    int intdata;
+    while (uae_main_next_event(&event, &data, &intdata)) {
+        fsuae_log_debug("Main received event %d (data: %p)\n", event, data);
+        switch (event) {
+            case UAE_EVENT_FLOPPY0PATH:
+            case UAE_EVENT_FLOPPY1PATH:
+            case UAE_EVENT_FLOPPY2PATH:
+            case UAE_EVENT_FLOPPY3PATH:
+                fsuae_media_handle_uae_event(event, data);
+                break;
+                // default:
+                //     printf(
+                //         "Warning: Unhandled event %d (possibly
+                //         memory " "leak)\n", event);
+
+            case UAE_EVENT_PORT0MODE:
+            case UAE_EVENT_PORT1MODE:
+            case UAE_EVENT_PORT2MODE:
+            case UAE_EVENT_PORT3MODE:
+                fsuae_input_handle_uae_event(event, data, intdata);
+                break;
+        }
+        uae_main_free_event(event, data);
+    }
+}
+
+static void handle_clipboard_integration(void)
+{
+    char *clipboard_uae = uae_clipboard_get_text();
+    if (clipboard_uae) {
+        SDL_SetClipboardText(clipboard_uae);
+        uae_clipboard_free_text(clipboard_uae);
+    } else {
+        // FIXME: Ideally, we would want to avoid this alloc/free when the
+        // clipboard hasn't changed.
+        char *clipboard_host = SDL_GetClipboardText();
+        uae_clipboard_put_text(clipboard_host);
+        SDL_free(clipboard_host);
+    }
+}
+
+static void main_loop(void)
+{
+    while (fsemu_main_is_running()) {
+        // FIXME: Events from UAE could also be injected into the SDL
+        // event system via custom events...
+        handle_events_from_uae();
+
+        fsemu_main_update_and_snapshot_gui();
+        handle_clipboard_integration();
+        fsemu_main_handle_events_until_next_frame();
+    }
+    // fsemu_main_quit();
+#if 0
+    // FIXME: Or get snapshot from fsemu helper?
+    // fsemu_gui_item_t *snapshot = NULL;
+    // if (fsemu_video_is_threaded()) {
+
+    // } else {
+    //     NULL;  // = fsemu_gui_snapshot();
+    //             // We do not need to initialize snapshot, new_host_frame
+    //             // will force a snapshot to be created in the main loop.
+    // bool new_host_frame = true;
+
+    // if (fsemu_video_is_threaded()) {
+        while (fsemu_main_is_running()) {
+            // FIXME: Events from UAE could also be injected into the SDL
+            // event system via custom events...
+            handle_events_from_uae();
+
+            fsemu_main_update_and_snapshot_gui();
+
+            handle_clipboard_integration();
+
+            fsemu_main_handle_events_until_next_frame();
+        }
+        return;
+    // }
+#if 0
+    while (!fsemu_quit_check()) {
+        // main_iteration / window_iteration
+
+        static int64_t old_frame = 0;
+        int64_t frame = fsemu_frame_counter();
+        if (frame != old_frame) {
+            fsemu_fade_update();
+            fsemu_hud_update();
+            fsemu_oskeyboard_update();
+            fsemu_osmenu_update();
+            fsemu_perfgui_update();
+            fsemu_startupinfo_update();
+            fsemu_titlebar_update();
+            old_frame = frame;
+        }
+
+        if (new_host_frame) {
+            snapshot = fsemu_gui_snapshot();
+
+            if (!fsemu_video_is_threaded()) {
+                fsemu_video_render_gui_early(snapshot);
+            }
+
+            new_host_frame = false;
+
+            handle_clipboard_integration();
+        }
+
+        // The SDL window subsystem will put input events into a queue which
+        // can be read by the SDL input system right afterwards. So the order
+        // here matters.
+        fsemu_window_work(0);
+        fsemu_input_work(0);
+
+        handle_events_from_uae();
+
+        if (!fsemu_video_is_threaded()) {
+            fsemu_video_work(1000);
+            if (fsemu_video_ready()) {
+                fsemu_video_render();
+                fsemu_video_render_gui(snapshot);
+                fsemu_gui_free_snapshot(snapshot);
+                snapshot = NULL;
+
+                fsemu_video_display();
+
+                new_host_frame = true;
+            }
+        }
+    }
+
+    if (snapshot) {
+        fsemu_gui_free_snapshot(snapshot);
+    }
+#endif
+#endif
+}
+
 int main(int argc, char *argv[])
 {
     fs_uae_argc = argc;
@@ -1476,6 +1679,8 @@ int main(int argc, char *argv[])
     cef_init(argc, argv);
 #endif
 
+    fsemu_hud_init_early();
+
     char **arg;
     arg = argv + 1;
     while (arg && *arg) {
@@ -1483,7 +1688,11 @@ int main(int argc, char *argv[])
             printf("%s\n", PACKAGE_VERSION);
             exit(0);
         } else if (strcmp(*arg, "--help") == 0) {
-            printf(COPYRIGHT_NOTICE, PACKAGE_VERSION, OS_NAME_2, ARCH_NAME_2);
+            printf(COPYRIGHT_NOTICE,
+                   PACKAGE_VERSION,
+                   OS_NAME_2,
+                   ARCH_NAME_2,
+                   UAE_BASE_VERSION);
             printf(EXTRA_HELP_TEXT);
             exit(0);
         }
@@ -1499,11 +1708,21 @@ int main(int argc, char *argv[])
     fs_set_prgname("fs-uae");
     fs_set_application_name("Amiga Emulator");
 
-    printf(COPYRIGHT_NOTICE, PACKAGE_VERSION, OS_NAME_2, ARCH_NAME_2);
-    fs_log(COPYRIGHT_NOTICE, PACKAGE_VERSION, OS_NAME_2, ARCH_NAME_2);
+    fprintf(stderr,
+            COPYRIGHT_NOTICE,
+            PACKAGE_VERSION,
+            OS_NAME_2,
+            ARCH_NAME_2,
+            UAE_BASE_VERSION);
+    fsemu_log_with_level(FSEMU_LOG_LEVEL_INFO,
+                         COPYRIGHT_NOTICE,
+                         PACKAGE_VERSION,
+                         OS_NAME_2,
+                         ARCH_NAME_2,
+                         UAE_BASE_VERSION);
 
     char *current_dir = g_get_current_dir();
-    fs_log("current directory is %s\n", current_dir);
+    fsuae_log("current directory is %s\n", current_dir);
     g_free(current_dir);
 
 #ifdef MACOSX
@@ -1514,9 +1733,9 @@ int main(int argc, char *argv[])
     SDL_Init(SDL_INIT_EVERYTHING);
     SDL_PumpEvents();
     SDL_Event event;
-    fs_log("OS X: Check for pending SDL_DROPFILE event\n");
+    fsuae_log("OS X: Check for pending SDL_DROPFILE event\n");
     while (SDL_PollEvent(&event)) {
-        fs_log("Got SDL event 0x%x\n", event.type);
+        fsuae_log("Got SDL event 0x%x\n", event.type);
         if (event.type == SDL_DROPFILE) {
             if (event.drop.file != NULL) {
                 g_fs_uae_config_file_path = strdup(event.drop.file);
@@ -1552,11 +1771,11 @@ int main(int argc, char *argv[])
      * specified on the command line. */
     fs_config_parse_options(argc - 1, argv + 1);
 
-    fs_log("\n");
-    fs_log(LOG_LINE);
-    fs_log("libfsemu init\n");
-    fs_log(LOG_LINE);
-    fs_log("\n");
+    fsuae_log("\n");
+    fsuae_log(LOG_LINE);
+    fsuae_log("libfsemu init\n");
+    fsuae_log(LOG_LINE);
+    fsuae_log("\n");
 
     // FIXME: Replace with n calls to fsemu_path_add_prefix ?
 
@@ -1573,82 +1792,87 @@ int main(int argc, char *argv[])
     amiga_set_log_function(log_to_libfsemu);
     amiga_init();
 
-    if (fs_config_get_boolean("legacy") == 1) {
-        fsemu = 0;
-    } else {
-        fsemu = 1;
+    fsemu = 1;
+
+    // This call will also register the main thread.
+    fsemu_thread_init();
+    // Register main thread as video thread also.
+    fsemu_thread_set_video();
+
+    fsemu_option_init_from_argv(argc, argv);
+
+
+    fsemu_log_setup();
+    // fsemu_audio_init(0);
+    // fsemu_window_init();
+
+#if 0
+    // fsemu_audio_init(0);
+    fsemu_window_init();
+    fsemu_video_init();
+    fsemu_titlebar_init();
+
+    fsemu_audio_init();
+
+    fsemu_perfgui_init();
+    fsemu_titlebar_update();
+#endif
+
+    fsemu_set_emulator_name("FS-UAE");
+    fsemu_window_set_title("FS-UAE");
+    // fsemu_video_set_renderer(renderer);
+    // fsemu_startupinfo_set_emulator_name("FS-UAE");
+    // fsemu_startupinfo_set_emulator_fork_info("Mednafen");
+#if 0
+    // FIXME: Review
+    if (fullscreen == 1) {
+        fsemu_window_set_fullscreen(true);
     }
-
-    if (fsemu) {
-        // This call will also register the main thread.
-        fsemu_thread_init();
-        // Register main thread as video thread also.
-        fsemu_thread_set_video();
-
-        fsemu_option_init_from_argv(argc, argv);
-
-        // fsemu_audio_init(0);
-        // fsemu_window_init();
-
-#if 0
-        // fsemu_audio_init(0);
-        fsemu_window_init();
-        fsemu_video_init();
-        fsemu_titlebar_init();
-
-        fsemu_audio_init();
-
-        fsemu_perfgui_init();
-        fsemu_titlebar_update();
-#endif
-
-        fsemu_set_emulator_name("FS-UAE");
-        fsemu_window_set_title("FS-UAE");
-        // fsemu_video_set_renderer(renderer);
-        // fsemu_startupinfo_set_emulator_name("FS-UAE");
-        // fsemu_startupinfo_set_emulator_fork_info("Mednafen");
-#if 0
-        // FIXME: Review
-        if (fullscreen == 1) {
-            fsemu_window_set_fullscreen(true);
-        }
 #endif
 #if 0
-        // FIXME: Review
-        if (vsync == 1) {
-            fsemu_video_set_vsync(1);
-        }
-#endif
-        // fsemu_video_set_vsync(1);
-
-        fsemu_video_set_renderer(FSEMU_VIDEO_RENDERER_OPENGL);
-
-        fsemu_control_set_soft_reset_allowed(true);
-        fsemu_control_set_hard_reset_allowed(true);
-
-        fsemu_window_init();
-
-        // fsemu_video_set_format(FSEMU_VIDEO_FORMAT_RGB565);
-
-        fsemu_video_init();
-
-        fsemu_fade_init();
-        fsemu_titlebar_init();
-
-        fsemu_helper_startup_loop();
-
-        fsemu_background_init();
-        fsemu_hud_init();
-        fsemu_oskeyboard_init();
-        fsemu_osmenu_init();
-        fsemu_perfgui_init();
-        fsemu_startupinfo_init();
-
-        fsemu_audio_init();
-        fsemu_input_init();
+    // FIXME: Review
+    if (vsync == 1) {
+        fsemu_video_set_vsync(1);
     }
+#endif
+    // fsemu_video_set_vsync(1);
+
+    fsemu_application_set_base_dir(fsuae_path_base_dir());
+
+    fsemu_video_set_renderer(FSEMU_VIDEO_RENDERER_OPENGL);
+
+    fsemu_control_set_soft_reset_allowed(true);
+    fsemu_control_set_hard_reset_allowed(true);
+
+    fsemu_window_init();
+
+    // fsemu_video_set_format(FSEMU_VIDEO_FORMAT_RGB565);
+
+    fsemu_video_init();
+
+    fsemu_fade_init();
+    fsemu_titlebar_init();
+
+    fsemu_helper_startup_loop();
+
+    fsemu_background_init();
+    fsemu_hud_init();
+    fsemu_oskeyboard_init();
+    fsemu_osmenu_init();
+    fsemu_perfgui_init();
+    fsemu_screenshot_init();
+    fsemu_startupinfo_init();
+
+    fsemu_audio_init();
+    fsemu_input_init();
+
+    fsemu_leds_init();
+    fsemu_helpbar_init();
+
+    fsemu_action_init();
 
     init_i18n();
+    fsuae_init_leds();
 
     if (g_fs_uae_disk_file_path) {
         fs_config_set_string(OPTION_FLOPPY_DRIVE_0, g_fs_uae_disk_file_path);
@@ -1673,33 +1897,33 @@ int main(int argc, char *argv[])
 #ifdef LINUX
         if (fs_config_get_boolean(OPTION_GAME_MODE) != 0) {
             if (gamemode_request_start() < 0) {
-                fs_log("GameMode: Request failed: %s\n",
-                       gamemode_error_string());
+                fsuae_log("GameMode: Request failed: %s\n",
+                          gamemode_error_string());
             } else {
-                fs_log("GameMode: Enabled game mode\n");
+                fsuae_log("GameMode: Enabled game mode\n");
             }
         }
         check_linux_cpu_governor();
 #endif
     }
 
-    fs_log("\n");
-    fs_log(LOG_LINE);
-    fs_log("fs-uae init\n");
-    fs_log(LOG_LINE);
-    fs_log("\n");
+    fsuae_log("\n");
+    fsuae_log(LOG_LINE);
+    fsuae_log("fs-uae init\n");
+    fsuae_log(LOG_LINE);
+    fsuae_log("\n");
 
     configure_logging(fs_config_get_const_string("log"));
 
-    fs_log("[GLIB] Version %d.%d.%d (Compiled against %d.%d.%d)\n",
-           glib_major_version,
-           glib_minor_version,
-           glib_micro_version,
-           GLIB_MAJOR_VERSION,
-           GLIB_MINOR_VERSION,
-           GLIB_MICRO_VERSION);
+    fsuae_log("[GLIB] Version %d.%d.%d (Compiled against %d.%d.%d)\n",
+              glib_major_version,
+              glib_minor_version,
+              glib_micro_version,
+              GLIB_MAJOR_VERSION,
+              GLIB_MINOR_VERSION,
+              GLIB_MICRO_VERSION);
 #if 0
-    fs_log("[GLIB] Using system malloc: %s\n",
+    fsuae_log("[GLIB] Using system malloc: %s\n",
            g_mem_is_system_malloc() ? "Yes" : "No");
 #endif
 
@@ -1766,20 +1990,20 @@ int main(int argc, char *argv[])
     }
 #endif
 
-    // we initialize the recording module either it is used or not, so it
+    // We initialize the recording module whether it is used or not, so it
     // can delete state-specific recordings (if necessary) when states are
-    // saved
+    // saved.
     fs_uae_init_recording();
 
     int deterministic_mode = 0;
     const char *record_file = fs_config_get_const_string("record");
     if (record_file) {
-        fs_log("record file specified: %s, forcing deterministic mode\n",
-               record_file);
+        fsuae_log("record file specified: %s, forcing deterministic mode\n",
+                  record_file);
         deterministic_mode = 1;
         fs_uae_enable_recording(record_file);
     } else {
-        fs_log("not running in record mode\n");
+        fsuae_log("not running in record mode\n");
     }
 
     if (
@@ -1873,8 +2097,8 @@ int main(int argc, char *argv[])
         amiga_set_video_format(AMIGA_VIDEO_FORMAT_BGRA);
     } else if (video_format == FSEMU_VIDEO_FORMAT_RGB565) {
         amiga_set_video_format(AMIGA_VIDEO_FORMAT_R5G6B5);
-    // } else if (video_format == FSEMU_VIDEO_FORMAT_R5G5B5A1) {
-    //     amiga_set_video_format(AMIGA_VIDEO_FORMAT_R5G5B5A1);
+        // } else if (video_format == FSEMU_VIDEO_FORMAT_R5G5B5A1) {
+        //     amiga_set_video_format(AMIGA_VIDEO_FORMAT_R5G5B5A1);
     } else {
         fs_emu_warning("Unsupported video format requested");
     }
@@ -1920,15 +2144,15 @@ int main(int argc, char *argv[])
 
         // FIXME: MOVE SOMEWHERE ELSE
         fsemu_input_autofill_devices();
-        fsemu_input_reconfigure();
         // FIXME: MOVE SOMEWHERE ELSE
+        fsemu_input_reconfigure();
     }
 
     const char *value = fs_config_get_const_string("whdload_quit_key");
     if (value) {
         sscanf(value, "%02x", &whdload_quit_key);
         if (whdload_quit_key) {
-            fs_log("Using WHDLoad quit key: %02X\n", whdload_quit_key);
+            fsuae_log("Using WHDLoad quit key: %02X\n", whdload_quit_key);
         }
     }
 
@@ -1981,130 +2205,33 @@ int main(int argc, char *argv[])
     fs_emu_run(main_function);
 
     if (fsemu) {
-        // FIXME: Or get snapshot from fsemu helper?
-        fsemu_gui_item_t *snapshot =
-            NULL;  // = fsemu_gui_snapshot();
-                   // We do not need to initialize snapshot, new_host_frame
-                   // will force a snapshot to be created in the main loop.
-        bool new_host_frame = true;
-
-        while (!fsemu_quit_check()) {
-            // main_iteration / window_iteration
-
-            static int64_t old_frame = 0;
-            int64_t frame = fsemu_frame_counter();
-            if (frame != old_frame) {
-                fsemu_fade_update();
-                fsemu_hud_update();
-                fsemu_oskeyboard_update();
-                fsemu_osmenu_update();
-                fsemu_perfgui_update();
-                fsemu_startupinfo_update();
-                fsemu_titlebar_update();
-                old_frame = frame;
-            }
-
-            if (new_host_frame) {
-                // if (snapshot) {
-                //     fsemu_gui_free_snapshot(snapshot);
-                // }
-                snapshot = fsemu_gui_snapshot();
-
-                fsemu_video_render_gui_early(snapshot);
-
-                new_host_frame = false;
-
-                char *clipboard_uae = uae_clipboard_get_text();
-                if (clipboard_uae) {
-                    SDL_SetClipboardText(clipboard_uae);
-                    uae_clipboard_free_text(clipboard_uae);
-                } else {
-                    // FIXME: Ideally, we would want to avoid this alloc/free
-                    // when the clipboard hasn't changed.
-                    char *clipboard_host = SDL_GetClipboardText();
-                    uae_clipboard_put_text(clipboard_host);
-                    SDL_free(clipboard_host);
-                }
-            }
-
-            // The SDL window subsystem will put input events into a queue
-            // which can be read by the SDL input system right afterwards.
-            fsemu_window_work(0);
-            fsemu_input_work(0);
-
-            // FIXME: Move this event handling into a separate function.
-            int event;
-            void *data;
-            int intdata;
-            while (uae_main_next_event(&event, &data, &intdata)) {
-                fsuae_log_debug("Main received event %d (data: %p)\n", event, data);
-                switch (event) {
-                    case UAE_EVENT_FLOPPY0PATH:
-                    case UAE_EVENT_FLOPPY1PATH:
-                    case UAE_EVENT_FLOPPY2PATH:
-                    case UAE_EVENT_FLOPPY3PATH:
-                        fsuae_media_handle_uae_event(event, data);
-                        break;
-                        // default:
-                        //     printf(
-                        //         "Warning: Unhandled event %d (possibly
-                        //         memory " "leak)\n", event);
-
-                    case UAE_EVENT_PORT0MODE:
-                    case UAE_EVENT_PORT1MODE:
-                    case UAE_EVENT_PORT2MODE:
-                    case UAE_EVENT_PORT3MODE:
-                        fsuae_input_handle_uae_event(event, data, intdata);
-                        break;
-                }
-                uae_main_free_event(event, data);
-            }
-
-            fsemu_video_work(1000);
-            if (fsemu_video_ready()) {
-                fsemu_video_render();
-                fsemu_video_render_gui(snapshot);
-                fsemu_gui_free_snapshot(snapshot);
-                snapshot = NULL;
-
-                fsemu_video_display();
-
-                // fsemu_titlebar_update();
-                // snapshot = fsemu_gui_snapshot();
-
-                new_host_frame = true;
-            }
-
-            // audio_iteration
-
-            // fsemu_sleep_millis(1);
-
-            // if (fsemu_quit_check) {
-            //     fsemu_quit_abort()
-            // }
-        }
-
-        if (snapshot) {
-            fsemu_gui_free_snapshot(snapshot);
-        }
-
+        main_loop();
         amiga_quit();
     }
 
-    fs_log("fs-uae shutting down, fs_emu_run returned\n");
+    fsuae_log("fs-uae shutting down, fs_emu_run returned\n");
     if (g_rmdir(fsuae_path_state_dir()) == 0) {
-        fs_log("state dir %s was removed because it was empty\n",
-               fsuae_path_state_dir());
+        fsuae_log("state dir %s was removed because it was empty\n",
+                  fsuae_path_state_dir());
     } else {
-        fs_log("state dir %s was not removed (non-empty)\n",
-               fsuae_path_state_dir());
+        fsuae_log("state dir %s was not removed (non-empty)\n",
+                  fsuae_path_state_dir());
     }
-    fs_log("end of main function\n");
+    fsuae_log("end of main function\n");
     cleanup_old_files();
+
+    // Fixes PGO issues?
+    fs_thread_wait(g_emulation_thread);
 
     // FIXME: Probably call some more high-level fsemu_quit function instead
     // and let that one call fsemu_module_quit.
     fsemu_module_quit();
+
+#if 0
+    int a = 3;
+    int b = 0;
+    printf("%d\n", a / b);
+#endif
 
     return 0;
 }

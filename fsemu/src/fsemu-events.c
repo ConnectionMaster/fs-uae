@@ -1,4 +1,4 @@
-#include "fsemu-internal.h"
+#define FSEMU_INTERNAL
 #include "fsemu-events.h"
 
 #include <SDL2/SDL.h>

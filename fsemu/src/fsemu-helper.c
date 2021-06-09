@@ -1,6 +1,8 @@
-#include "fsemu-internal.h"
+#define FSEMU_INTERNAL
 #include "fsemu-helper.h"
 
+#include "fsemu-action.h"
+#include "fsemu-application.h"
 #include "fsemu-background.h"
 #include "fsemu-controller.h"
 #include "fsemu-fade.h"
@@ -8,10 +10,14 @@
 #include "fsemu-gamemode.h"
 #include "fsemu-hud.h"
 #include "fsemu-input.h"
+#include "fsemu-leds.h"
+#include "fsemu-log.h"
 #include "fsemu-option.h"
 #include "fsemu-oskeyboard.h"
 #include "fsemu-osmenu.h"
 #include "fsemu-perfgui.h"
+#include "fsemu.h"
+#include "fsemu-screenshot.h"
 // FIXME: Ideally, remove this dependency
 #include "fsemu-sdlwindow.h"
 #include "fsemu-startupinfo.h"
@@ -20,6 +26,7 @@
 #include "fsemu-time.h"
 #include "fsemu-titlebar.h"
 #include "fsemu-video.h"
+#include "fsemu-videothread.h"
 #include "fsemu-window.h"
 
 static struct {
@@ -32,19 +39,29 @@ void fsemu_helper_init_emulator(const char *emulator_name,
                                 int fullscreen,
                                 int vsync)
 {
-    fsemu_log("[HELPR] Init emulator vsync=%d\n", vsync);
+    fsemu_boot_log("fsemu_init_with_args");
+    fsemu_log("[FSE] [HLP] Init emulator vsync=%d\n", vsync);
 
-    // This call will also register the main thread.
+    // Make sure warnings can be safely logged and scheduled for later
+    // displaying via an async queue.
+    fsemu_hud_init_early();
+
+    fsemu_warning_2("Early development preview",
+                    "Some features are not fully developed");
+
+    fsemu_boot_log("before fsemu_thread_init");
+    // This call will also register the main thread
     fsemu_thread_init();
-    // Register main thread as video thread also.
+    // Register main thread as video thread also
     fsemu_thread_set_video();
 
+    fsemu_boot_log("before fsemu_log_setup");
+    fsemu_log_setup();
+
+    fsemu_boot_log("before fsemu_option_init");
     fsemu_option_init();
 
-    fsemu_gamemode_init();
-    // FIXME: Check (on Linux) if CPU governor is now set to performance.
-
-    fsemu_set_emulator_name(emulator_name);
+    // fsemu_set_emulator_name(emulator_name);
     const char *env_title = fsemu_read_env_option("WINDOW_TITLE");
     // printf("%s\n", env_title);
     // exit(1);
@@ -70,23 +87,56 @@ void fsemu_helper_init_emulator(const char *emulator_name,
         fsemu_video_set_vsync(1);
     }
 
+    fsemu_boot_log("before fsemu_window_init");
     fsemu_window_init();
+    fsemu_boot_log("before fsemu_video_init");
     fsemu_video_init();
+    fsemu_boot_log("before fsemu_fade_init");
     fsemu_fade_init();
+    fsemu_boot_log("before fsemu_titlebar_init");
     fsemu_titlebar_init();
+    // Hmm, necessary?
+    fsemu_boot_log("before fsemu_input_init");
     fsemu_input_init();
 
+    // Now, open the window and render the decorations
+
+    fsemu_boot_log("before fsemu_helper_startup_loop");
     fsemu_helper_startup_loop();
 
+    // Continue with initialization
+
+    fsemu_application_init();
+    fsemu_screenshot_init();
+
+    fsemu_boot_log("before fsemu_action_init");
+    fsemu_action_init();
+    fsemu_boot_log("before fsemu_background_init");
     fsemu_background_init();
+
+    fsemu_boot_log("before fsemu_hud_init");
     fsemu_hud_init();
+
+    // FIXME: Postpone this until after the window is shown?
+    fsemu_boot_log("before fsemu_gamemode_init");
+    fsemu_gamemode_init();
+    // FIXME: Check (on Linux) if CPU governor is now set to performance
+
+    fsemu_boot_log("before fsemu_leds_init");
+    fsemu_leds_init();
+    fsemu_boot_log("before fsemu_oskeyboard_init");
     fsemu_oskeyboard_init();
+    fsemu_boot_log("before fsemu_osmenu_init");
     fsemu_osmenu_init();
+    fsemu_boot_log("before fsemu_perfgui_init");
     fsemu_perfgui_init();
+    fsemu_boot_log("before fsemu_startupinfo_init");
     fsemu_startupinfo_init();
+    fsemu_boot_log("before fsemu_theme_module_init");
     fsemu_theme_module_init();
 
     // FIXME: Maybe temporary
+    fsemu_boot_log("before fsemu_controller_init");
     fsemu_controller_init();
 }
 
@@ -109,7 +159,7 @@ static void fsemu_helper_poll_and_sleep(void)
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (fsemu_sdlwindow_handle_event(&event)) {
-            // printf("[FSEMU] Not passing on event to emulator\n");
+            // printf("[FSE] Not passing on event to emulator\n");
             continue;
         }
     }
@@ -122,6 +172,11 @@ void fsemu_helper_startup_loop(void)
     int64_t t0;
     int64_t duration_us;
 
+    // if (fsemu_video_is_threaded()) {
+    //     printf("VIDEO IS THREADED, SKIPPING fsemu_helper_startup_loop\n");
+    //     return;
+    // }
+
     // fsemu_fade_force(true);
 
     // When opening directly to fullscreen, we run the rendering loop
@@ -132,7 +187,7 @@ void fsemu_helper_startup_loop(void)
         // fsemu_fade_set_color(FSEMU_RGB(0x000000));
         duration_us = 500 * 1000;
 #if 0
-        fsemu_log("[FSEMU] Entering fullscreen clear loop");
+        fsemu_log("[FSE] Entering fullscreen clear loop");
         t0 = fsemu_time_us();
         // The fade function also renders to full black for the first frames
         // to avoid flickering from the emulated machine booting. So we don't
@@ -142,7 +197,7 @@ void fsemu_helper_startup_loop(void)
             fsemu_video_display();
             fsemu_helper_poll_and_sleep();
         }
-        fsemu_log("[FSEMU] Leave fullscreen clear loop");
+        fsemu_log("[FSE] Leave fullscreen clear loop");
 #endif
     } else {
         // fsemu_fade_set_color(FSEMU_RGB(0x808080));
@@ -162,7 +217,7 @@ void fsemu_helper_startup_loop(void)
 
 #if 0
     if (fsemu_window_fullscreen()) {
-        fsemu_log("[FSEMU] Leave fullscreen clear loop");
+        fsemu_log("[FSE] Leave fullscreen clear loop");
         return;
     }
 #endif
@@ -176,6 +231,13 @@ void fsemu_helper_startup_loop(void)
 
     t0 = fsemu_time_us();
     // for (int i = 0; i < 10; i++) {
+
+#if 0
+    (void) t0;
+    (void) duration_us;
+#else
+    // Disabled due to v-sync testing
+
     while (fsemu_time_us() - t0 < duration_us) {
         // if (fsemu_helper.gui) {
         fsemu_video_render_gui(fsemu_helper.gui);
@@ -195,10 +257,23 @@ void fsemu_helper_startup_loop(void)
         fsemu_helper_poll_and_sleep();
     }
 
+    // Resetting these to avoid confusion the frame timing system
+    fsemu_frame_number_rendering = -1;
+    fsemu_frame_number_rendered = -1;
+    fsemu_frame_number_displaying = -1;
+    fsemu_frame_number_displayed = -1;
+
+#endif
     // FIXME: Should not be necessary to get / render early gui from emulators
     // since this is done here!
 
     // fsemu_fade_force(false);
+
+    // FIXME:
+    // if (fsemu_video_is_threaded()) {
+    //     fsemu_videothread_start();
+    // }
+    fsemu_video_set_startup_done_mt();
 }
 
 // FIXME: Remove: deprecated
@@ -239,8 +314,7 @@ void fsemu_helper_sleep_display_end_start(double hz)
 
 #ifdef FSEMU_SAMPLERATE
     // FIXME: Move?
-    fsemu_audio_buffer_set_adjustment(
-        fsemu_audio_buffer_calculate_adjustment());
+    fsemu_audiobuffer_set_adjustment(fsemu_audiobuffer_calculate_adjustment());
 #endif
 
     fsemu_frame_log_epoch("Frame begin\n");

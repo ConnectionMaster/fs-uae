@@ -20,6 +20,11 @@ void fsemu_option_init_from_argv(int argc, char **argv);
 
 void fsemu_option_load_from_argv(int argc, char **argv);
 
+fsemu_error_t fsemu_option_read_config_file(const char *path);
+
+const char **fsemu_option_keys(void);
+void fsemu_option_keys_free(const char **keys);
+
 const char *fsemu_option_const_string(const char *name);
 
 // This function is guaranteed to not return a NULL value unless you pass in
@@ -48,6 +53,13 @@ int fsemu_option_read_int(const char *name, int *result);
 // int fsemu_option_read_string(const char *name, int *result, int max_len);
 int fsemu_option_read_const_string(const char *name, const char **result);
 
+static inline bool fsemu_option_enabled(const char *name)
+{
+    bool result;
+    fsemu_option_read_bool_default(name, &result, false);
+    return result == true;
+}
+
 static inline bool fsemu_option_disabled(const char *name)
 {
     bool result;
@@ -60,9 +72,9 @@ static inline int fsemu_option_boolean(const char *name)
     return FSEMU_CONFIG_NONE;
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // FIXME: REMOVE START
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 #include <stdbool.h>
 
@@ -84,23 +96,35 @@ int fsemu_config_read_bool_default(const char *name,
                                    bool *result,
                                    bool default_value);
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // FIXME: REMOVE END
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-#ifdef FSEMU_INTERNAL
+// ----------------------------------------------------------------------------
+// Logging
+// ----------------------------------------------------------------------------
+
+extern int fsemu_option_log_level;
 
 #define fsemu_option_log(format, ...) \
-    fsemu_log("[FSEMU] [ OPT ] " format, ##__VA_ARGS__)
+    FSEMU_LOG(option, "[FSE] [OPT]", format, ##__VA_ARGS__)
 
-#ifdef FSEMU_DEBUG
 #define fsemu_option_log_debug(format, ...) \
-    fsemu_option_log(format, ##__VA_ARGS__)
-#else
-#define fsemu_option_log_debug(format, ...)
-#endif
+    FSEMU_LOG_DEBUG(option, "[FSE] [OPT]", format, ##__VA_ARGS__)
 
-#endif  // FSEMU_INTERNAL
+#define fsemu_option_log_error(format, ...) \
+    FSEMU_LOG_ERROR(option, "[FSE] [OPT]", format, ##__VA_ARGS__)
+
+#define fsemu_option_log_info(format, ...) \
+    FSEMU_LOG_INFO(option, "[FSE] [OPT]", format, ##__VA_ARGS__)
+
+#define fsemu_option_log_trace(format, ...) \
+    FSEMU_LOG_TRACE(option, "[FSE] [OPT]", format, ##__VA_ARGS__)
+
+#define fsemu_option_log_warning(format, ...) \
+    FSEMU_LOG_WARNING(option, "[FSE] [OPT]", format, ##__VA_ARGS__)
+
+// ----------------------------------------------------------------------------
 
 #ifdef __cplusplus
 }

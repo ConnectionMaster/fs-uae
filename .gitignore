@@ -7,6 +7,7 @@
 autom4te.cache
 *.autosave
 /base-dir
+/benchmark.txt
 /build/
 build68k
 /cef/
@@ -31,17 +32,13 @@ core
 /data/
 *.dbg
 /*.deb
+/demos
 /depcomp
 .deps
 /desktop/
 .dirstamp
-/dist/linux/Makefile
 /dist/macos/Info.plist
-/dist/macos/Makefile
-/dist/rpi4/Makefile
-/dist/steamos/Makefile
 /dist/windows/fs-uae.iss
-/dist/windows/Makefile
 *.dll
 /*.dsc
 *.DS_Store

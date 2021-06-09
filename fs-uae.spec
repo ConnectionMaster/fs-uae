@@ -1,4 +1,4 @@
-# Copyright © 2011–2019 Frode Solheim <frode@fs-uae.net>
+# Copyright © 2011–2021 Frode Solheim <frode@solheim.dev>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,9 +13,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+%define fsbuild_version 4.0.15-dev
+
 %define name fs-uae
-%define version 3.9.100dev
-%define unmangled_version 3.9.100dev
+%define version %{fsbuild_version}
+%define unmangled_version %{fsbuild_version}
 %define release 1%{?dist}
 
 %undefine _hardened_build

@@ -30,7 +30,13 @@ if F_NO_STRICT_ALIASING
 CM_CFLAGS += -fno-strict-aliasing
 endif
 if W_NO_FORMAT_TRUNCATION
+if MACOS
+# For some reason clang on mac at least passes the configure test for
+# -Wno-format-truncation but annoyingly warns about unknown option. So
+# don't try to use this on macOS for now.
+else
 CM_CFLAGS += -Wno-format-truncation
+endif
 endif
 if W_ADDRESS
 CM_CFLAGS += -Waddress
@@ -218,21 +224,6 @@ libuae_a_SOURCES = \
 	src/amax.cpp \
 	src/ar.cpp \
 	src/arcadia.cpp \
-	src/archivers/chd/astring.h \
-	src/archivers/chd/bitstream.h \
-	src/archivers/chd/chd.h \
-	src/archivers/chd/chdcd.h \
-	src/archivers/chd/chdcdrom.h \
-	src/archivers/chd/chdcodec.h \
-	src/archivers/chd/chdtypes.h \
-	src/archivers/chd/corefile.h \
-	src/archivers/chd/coretmpl.h \
-	src/archivers/chd/flac.h \
-	src/archivers/chd/hashing.h \
-	src/archivers/chd/huffman.h \
-	src/archivers/chd/md5.h \
-	src/archivers/chd/osdcore.h \
-	src/archivers/chd/sha1.h \
 	src/archivers/dms/cdata.h \
 	src/archivers/dms/crc_csum.cpp \
 	src/archivers/dms/crc_csum.h \
@@ -842,15 +833,19 @@ libfsemu2_a_SOURCES = \
 	fsemu/manymouse/manymouse.h \
 	fsemu/manymouse/windows_wminput.c \
 	fsemu/manymouse/x11_xinput2.c \
+	fsemu/src/fsemu.c \
+	fsemu/src/fsemu.h \
 	fsemu/src/fsemu-all.h \
 	fsemu/src/fsemu-button.h \
 	fsemu/src/fsemu-action.c \
 	fsemu/src/fsemu-action.h \
 	fsemu/src/fsemu-actions.h \
-	fsemu/src/fsemu-audio-alsa.c \
-	fsemu/src/fsemu-audio-alsa.h \
-	fsemu/src/fsemu-audio-buffer.c \
-	fsemu/src/fsemu-audio-buffer.h \
+	fsemu/src/fsemu-alsaaudio.c \
+	fsemu/src/fsemu-alsaaudio.h \
+	fsemu/src/fsemu-application.c \
+	fsemu/src/fsemu-application.h \
+	fsemu/src/fsemu-audiobuffer.c \
+	fsemu/src/fsemu-audiobuffer.h \
 	fsemu/src/fsemu-audio.c \
 	fsemu/src/fsemu-audio.h \
 	fsemu/src/fsemu-axis.h \
@@ -880,6 +875,8 @@ libfsemu2_a_SOURCES = \
 	fsemu/src/fsemu-fontcache.h \
 	fsemu/src/fsemu-frame.c \
 	fsemu/src/fsemu-frame.h \
+	fsemu/src/fsemu-frameinfo.c \
+	fsemu/src/fsemu-frameinfo.h \
 	fsemu/src/fsemu-gamemode.c \
 	fsemu/src/fsemu-gamemode.h \
 	fsemu/src/fsemu-glib.h \
@@ -890,6 +887,8 @@ libfsemu2_a_SOURCES = \
 	fsemu/src/fsemu-glvideo.h \
 	fsemu/src/fsemu-gui.c \
 	fsemu/src/fsemu-gui.h \
+	fsemu/src/fsemu-helpbar.c \
+	fsemu/src/fsemu-helpbar.h \
 	fsemu/src/fsemu-helper.c \
 	fsemu/src/fsemu-helper.h \
 	fsemu/src/fsemu-hud.c \
@@ -912,8 +911,14 @@ libfsemu2_a_SOURCES = \
 	fsemu/src/fsemu-layer.h \
 	fsemu/src/fsemu-layout.c \
 	fsemu/src/fsemu-layout.h \
+	fsemu/src/fsemu-led.c \
+	fsemu/src/fsemu-led.h \
+	fsemu/src/fsemu-leds.c \
+	fsemu/src/fsemu-leds.h \
 	fsemu/src/fsemu-log.c \
 	fsemu/src/fsemu-log.h \
+	fsemu/src/fsemu-main.c \
+	fsemu/src/fsemu-main.h \
 	fsemu/src/fsemu-mainmenu.c \
 	fsemu/src/fsemu-mainmenu.h \
 	fsemu/src/fsemu-manymouse.c \
@@ -945,6 +950,8 @@ libfsemu2_a_SOURCES = \
 	fsemu/src/fsemu-perfgui.h \
 	fsemu/src/fsemu-quit.c \
 	fsemu/src/fsemu-quit.h \
+	fsemu/src/fsemu-recording.c \
+	fsemu/src/fsemu-recording.h \
 	fsemu/src/fsemu-refable.c \
 	fsemu/src/fsemu-refable.h \
 	fsemu/src/fsemu-render.c \
@@ -964,6 +971,8 @@ libfsemu2_a_SOURCES = \
 	fsemu/src/fsemu-sdlvideo.h \
 	fsemu/src/fsemu-sdlwindow.c \
 	fsemu/src/fsemu-sdlwindow.h \
+	fsemu/src/fsemu-semaphore.c \
+	fsemu/src/fsemu-semaphore.h \
 	fsemu/src/fsemu-shader.c \
 	fsemu/src/fsemu-shader.h \
 	fsemu/src/fsemu-startupinfo.c \
@@ -1010,16 +1019,30 @@ fsemu_data_files = \
 	fsemu/images/TitleBarMinimizeIcon.png \
 	fsemu/images/TitleBarWithShadow.png
 
+fsuae_data_files = \
+	src/fsuae/images/DiskLed_On.png \
+	src/fsuae/images/DiskLed.png \
+	src/fsuae/images/FloppyLed_On.png \
+	src/fsuae/images/FloppyLed.png \
+	src/fsuae/images/KLockLed_On.png \
+	src/fsuae/images/KLockLed.png \
+	src/fsuae/images/MLockLed_On.png \
+	src/fsuae/images/MLockLed.png \
+	src/fsuae/images/PowerLed_On.png \
+	src/fsuae/images/PowerLed.png \
+	src/fsuae/images/VSyncLed_Alt.png \
+	src/fsuae/images/VSyncLed_On.png \
+	src/fsuae/images/VSyncLed.png
+
 # FIXME: EXTRA_DIST ?
 libfsemu2_a_SOURCES += $(fsemu_data_files)
 
-data/.fsemu: $(fsemu_data_files)
-	mkdir -p $(b)/data/Fonts
-	cp $(s)/fsemu/fonts/saira/* $(b)/data/Fonts/
-	mkdir -p $(b)/data/Icons
-	cp $(s)/fsemu/icons/fontawesome/* $(b)/data/Icons/
-	mkdir -p $(b)/data/Images
-	cp $(s)/fsemu/images/* $(b)/data/Images/
+data/.fsemu: $(fsemu_data_files) ${fsuae_data_files}
+	mkdir -p $(b)/data/
+	cp $(s)/fsemu/fonts/saira/* $(b)/data/
+	cp $(s)/fsemu/icons/fontawesome/* $(b)/data/
+	cp $(s)/fsemu/images/* $(b)/data/
+	cp $(s)/src/fsuae/images/* $(b)/data/
 	touch data/.fsemu
 
 fsemu-data: data/.fsemu
@@ -1103,6 +1126,30 @@ libpearpc_a_SOURCES = \
 	src/ppc/pearpc/tools/snprintf.h \
 	src/ppc/pearpc/tracers.h \
 	src/ppc/pearpc/uaeglue.cpp
+endif
+
+if WITH_CHD
+noinst_LIBRARIES += libchd.a
+# AM_CPPFLAGS += -I$(s)/src/ppc/pearpc
+fs_uae_LDADD += libchd.a
+libchd_a_SOURCES = \
+	src/archivers/chd/astring.h \
+	src/archivers/chd/bitstream.h \
+	src/archivers/chd/chd.h \
+	src/archivers/chd/chdcd.cpp \
+	src/archivers/chd/chdcd.h \
+	src/archivers/chd/chdcdrom.cpp \
+	src/archivers/chd/chdcdrom.h \
+	src/archivers/chd/chdcodec.h \
+	src/archivers/chd/chdtypes.h \
+	src/archivers/chd/corefile.h \
+	src/archivers/chd/coretmpl.h \
+	src/archivers/chd/flac.h \
+	src/archivers/chd/hashing.h \
+	src/archivers/chd/huffman.h \
+	src/archivers/chd/md5.h \
+	src/archivers/chd/osdcore.h \
+	src/archivers/chd/sha1.h
 endif
 
 if WITH_X86
@@ -1631,6 +1678,7 @@ EXTRA_TESTS = \
 	tests/cppcheck-uae
 
 EXTRA_DIST = $(TESTS) $(EXTRA_TESTS) \
+	$(fsuae_data_files) \
 	debian/changelog \
 	debian/compat \
 	debian/control \
@@ -1638,18 +1686,6 @@ EXTRA_DIST = $(TESTS) $(EXTRA_TESTS) \
 	debian/rules \
 	debian/source \
 	debian/source/format \
-	dist/arch.py \
-	dist/linux/build.py \
-	dist/linux/standalone-linux.py \
-	dist/macos/fs-uae-config.icns \
-	dist/macos/fs-uae.icns \
-	dist/macos/PkgInfo \
-	dist/macos/sign.py \
-	dist/macos/standalone.py \
-	dist/rpi4/configure \
-	dist/windows/clib.py \
-	dist/windows/iscc.py \
-	dist/windows/sign.py \
 	docs/action-replay.md \
 	docs/amiga-forever.md \
 	docs/amigaos-4-1.md \
@@ -1678,7 +1714,6 @@ EXTRA_DIST = $(TESTS) $(EXTRA_TESTS) \
 	docs/variable-refresh-rate.md \
 	docs/vpar.md \
 	docs/vsync.md \
-	docs/whdload.md \
 	docs/windows.md \
 	docs/x-arcade.md \
 	flac/include/FLAC/all.h \
@@ -1692,14 +1727,14 @@ EXTRA_DIST = $(TESTS) $(EXTRA_TESTS) \
 	flac/include/FLAC/stream_encoder.h \
 	fsemu/gamemode/LICENSE.txt \
 	fsemu/gamemode/README.md \
+	fsemu/libinih/ini.c \
+	fsemu/libinih/ini.h \
+	fsemu/libinih/LICENSE.txt \
 	fs-uae.spec \
 	icon/fs-uae.ico \
 	glad/include/glad/glad.h \
 	glad/include/KHR/khrplatform.h \
 	glad/LICENSE \
-	libinih/ini.c \
-	libinih/ini.h \
-	libinih/LICENSE.txt \
 	libnfd/build/dont_run_premake.txt \
 	libnfd/build/gmake_linux/Makefile \
 	libnfd/build/gmake_linux/nfd.make \
@@ -1797,8 +1832,7 @@ EXTRA_DIST = $(TESTS) $(EXTRA_TESTS) \
 	share/applications \
 	share/fs-uae \
 	share/icons \
-	share/mime \
-	standalone.fs
+	share/mime
 
 CLEANFILES = $(BUILT_SOURCES)
 
@@ -1988,65 +2022,9 @@ uninstall-local:
 
 clean-local:
 	rm -f fs-uae.dat
-	rm -Rf data/Fonts
-	rm -Rf data/Icons
-	rm -Rf data/Images
+	rm -f data/*.ttf
+	rm -f data/*.png
 	rm -f data/.fsemu
 	find share -name fs-uae.mo -delete
-
-fs-uae-dist:
-	$(MAKE) -C dist/@OS_NAME@
-
-standalone: fs-uae$(EXEEXT) fs-uae.dat
-	@echo "Stripping fs-uae$(EXEEXT)"
-	strip fs-uae$(EXEEXT)
-	@echo "Appending fs-uae.dat"
-	cat fs-uae.dat >> fs-uae$(EXEEXT)
-	@echo "Correcting zip offsets"
-	zip -A fs-uae$(EXEEXT)
-
-bindist:
-	make distdir
-if LINUX
-	cd fs-uae-@PACKAGE_VERSION@ && fs-sdk-bionic-x86-64 ./configure
-	fs-sdk-bionic-x86-64 make -C fs-uae-@PACKAGE_VERSION@ -j4
-	fs-sdk-bionic-x86-64 make -C fs-uae-@PACKAGE_VERSION@/dist/linux
-	mv fs-uae-@PACKAGE_VERSION@/FS-UAE_@PACKAGE_VERSION@_Linux_x86-64.tar.xz .
-endif
-if MACOS
-	cd fs-uae-@PACKAGE_VERSION@ && ./configure
-	make -C fs-uae-@PACKAGE_VERSION@ -j4
-	make -C fs-uae-@PACKAGE_VERSION@/dist/macos
-	mv fs-uae-@PACKAGE_VERSION@/fs-uae_@PACKAGE_VERSION@_macos_x86-64.tar.xz .
-endif
-if WINDOWS
-	cd fs-uae-@PACKAGE_VERSION@ && ./configure
-	make -C fs-uae-@PACKAGE_VERSION@ -j2
-	make -C fs-uae-@PACKAGE_VERSION@/dist/windows tar.xz
-	mv fs-uae-@PACKAGE_VERSION@/fs-uae_@PACKAGE_VERSION@_windows_x86-64.tar.xz .
-endif
-	rm -Rf fs-uae-@PACKAGE_VERSION@
-
-bindist-x86:
-	make distdir
-if LINUX
-	cd fs-uae-@PACKAGE_VERSION@ && fs-sdk-bionic-x86 ./configure
-	fs-sdk-bionic-x86 make -C fs-uae-@PACKAGE_VERSION@ -j4
-	fs-sdk-bionic-x86 make -C fs-uae-@PACKAGE_VERSION@/dist/linux
-	mv fs-uae-@PACKAGE_VERSION@/fs-uae_@PACKAGE_VERSION@_linux_x86.tar.xz .
-endif
-if MACOS
-	cd fs-uae-@PACKAGE_VERSION@ && ./configure
-	make -C fs-uae-@PACKAGE_VERSION@ -j4
-	make -C fs-uae-@PACKAGE_VERSION@/dist/macos
-	mv fs-uae-@PACKAGE_VERSION@/fs-uae_@PACKAGE_VERSION@_macos_x86.tar.xz .
-endif
-if WINDOWS
-	cd fs-uae-@PACKAGE_VERSION@ && ./configure
-	make -C fs-uae-@PACKAGE_VERSION@ -j2
-	make -C fs-uae-@PACKAGE_VERSION@/dist/windows tar.xz
-	mv fs-uae-@PACKAGE_VERSION@/fs-uae_@PACKAGE_VERSION@_windows_x86.tar.xz .
-endif
-	rm -Rf fs-uae-@PACKAGE_VERSION@
 
 .PHONY: fsemu-data

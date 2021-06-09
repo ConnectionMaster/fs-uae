@@ -322,12 +322,12 @@ void fs_uae_configure_amiga_hardware()
     }
 
     if (fs_config_get_boolean(OPTION_LINE_DOUBLING) == 0) {
-        fs_log("disabling line doubling\n");
+        fsuae_log("disabling line doubling\n");
         amiga_set_option("gfx_linemode", "none");
     }
 
     if (fs_config_get_boolean(OPTION_LOW_RESOLUTION) == 1) {
-        fs_log("force low resolution\n");
+        fsuae_log("force low resolution\n");
         amiga_set_option("gfx_lores", "true");
     }
 
@@ -339,7 +339,11 @@ void fs_uae_configure_amiga_hardware()
     stereo_separation = stereo_separation / 10;
     amiga_set_int_option("sound_stereo_separation", stereo_separation);
 
+    // This must not be set higher than 96, that will interfere with sound
+    // filter (= always on).
+    amiga_set_option("power_led_dim", "96");
     if (c->enhanced_audio_filter) {
+        // A 1200 type filter
         amiga_set_option("sound_filter_type", "enhanced");
     }
 

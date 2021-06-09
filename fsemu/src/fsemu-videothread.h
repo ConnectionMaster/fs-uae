@@ -19,6 +19,10 @@ extern "C" {
 // contexts.
 void fsemu_videothread_init(void);
 
+// Called by the fsemu-video when/if it has decided to run rendering in a
+// dedicated rendering thread.
+void fsemu_videothread_start(void);
+
 void fsemu_videothread_lock(void);
 void fsemu_videothread_unlock(void);
 

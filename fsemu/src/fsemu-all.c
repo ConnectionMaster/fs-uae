@@ -14,9 +14,10 @@ extern "C" {
 // ----------------------------------------------------------------------------
 
 #include "fsemu-action.c"
-#include "fsemu-audio-alsa.c"
-#include "fsemu-audio-buffer.c"
+#include "fsemu-alsaaudio.c"
+#include "fsemu-application.c"
 #include "fsemu-audio.c"
+#include "fsemu-audiobuffer.c"
 #include "fsemu-background.c"
 #include "fsemu-common.c"
 #include "fsemu-config.c"
@@ -29,9 +30,11 @@ extern "C" {
 #include "fsemu-font.c"
 #include "fsemu-fontcache.c"
 #include "fsemu-frame.c"
+#include "fsemu-frameinfo.c"
 #include "fsemu-gamemode.c"
 #include "fsemu-glvideo.c"
 #include "fsemu-gui.c"
+#include "fsemu-helpbar.c"
 #include "fsemu-helper.c"
 #include "fsemu-hud.c"
 #include "fsemu-image.c"
@@ -41,7 +44,10 @@ extern "C" {
 #include "fsemu-inputmode.c"
 #include "fsemu-inputport.c"
 #include "fsemu-layout.c"
+#include "fsemu-led.c"
+#include "fsemu-leds.c"
 #include "fsemu-log.c"
+#include "fsemu-main.c"
 #include "fsemu-mainmenu.c"
 #include "fsemu-manymouse.c"
 #include "fsemu-media.c"
@@ -57,6 +63,7 @@ extern "C" {
 #include "fsemu-path.c"
 #include "fsemu-perfgui.c"
 #include "fsemu-quit.c"
+#include "fsemu-recording.c"
 #include "fsemu-refable.c"
 #include "fsemu-savestate.c"
 #include "fsemu-screenshot.c"
@@ -78,6 +85,7 @@ extern "C" {
 #include "fsemu-widget.c"
 #include "fsemu-window.c"
 #include "fsemu-xmlshader.c"
+#include "fsemu.c"
 
 // ----------------------------------------------------------------------------
 
